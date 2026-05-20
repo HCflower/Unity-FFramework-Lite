@@ -1,3 +1,4 @@
+# Unity-FFramework-Lite
 
 轻量、模块化、可扩展的 Unity 游戏开发基础框架，基于 MVC 架构，内置常用游戏开发工具模块。
 
@@ -17,24 +18,21 @@
   - [依赖注入（[Inject]）](#依赖注入-inject)
   - [数据绑定（BindableProperty）](#数据绑定-bindableproperty)
   - [事件系统（EventSystem）](#事件系统-eventsystem)
-  - [生命周期调度（GameMonoBehavior）](#生命周期调度-gamemonobehavior)
   - [单例模式](#单例模式)
   - [数据持久化](#数据持久化)
   - [Command 模式](#command-模式)
+  - [自定义 ScriptableObject](#自定义-scriptableobject)
 - [工具模块](#工具模块-fframeworkutility)
   - [对象池（ObjectPool）](#对象池-objectpool)
   - [有限状态机（FSM）](#有限状态机-fsm)
-  - [计时器（Timer）](#计时器-timer)
   - [资源加载（ResLoad）](#资源加载-resload)
-  - [数据存储（DataSave）](#数据存储-datasave)
   - [场景加载（SceneLoad）](#场景加载-sceneload)
   - [动画播放（PlayAnima）](#动画播放-playanima)
   - [震动效果（Shake）](#震动效果-shake)
+  - [UI 系统（UISystem）](#ui-系统-uisystem)
   - [UI 面板（UIPanel）](#ui-面板-uipanel)
   - [UI 事件绑定（UIEventExtensions）](#ui-事件绑定-uieventextensions)
   - [本地化系统（Localization）](#本地化系统-localization)
-  - [红点系统（RedDotManager）](#红点系统-reddotmanager)
-  - [虚拟摇杆（VirtualRocker）](#虚拟摇杆-virtualrocker)
 - [编辑器工具](#编辑器工具-editortools)
 - [常见问题](#常见问题-faq)
 
@@ -104,11 +102,12 @@ public class GameStartup : MonoBehaviour
 
 ### MVC 架构
 
-架构管理器 [`Architecture`](Assets/FFramework/Core/Architecture/Architecture.cs) 负责 Model / ViewController / Singleton 的注册、解析与生命周期管理。
+架构管理器 [`Architecture`](Assets/FFramework/Core/Architecture/Architecture.cs) 继承自 [`SingletonMono<Architecture>`](Assets/FFramework/Core/SingletonMono.cs)（`DefaultExecutionOrder(-100)`），负责 Model / ViewController / Singleton 的注册、解析与生命周期管理。
 
 - 使用 `Architecture.Instance` 获取单例
-- 通过 [`[Inject]`](Assets/FFramework/Core/Architecture/InjectAttribute.cs) 属性标记依赖字段，架构自动解析注入
-- 统一卸载顺序：Model → ViewController → Singleton
+- 通过 [`[Inject]`](Assets/FFramework/Core/Architecture/InjectAttribute.cs) 属性标记依赖字段/属性，架构自动解析注入
+- 依赖注入由 [`InjectHelper`](Assets/FFramework/Core/Architecture/InjectHelper.cs) 静态工具类实现，通过 `Resolver` 委托完成类型解析
+- 统一卸载顺序：Model → ViewController → Singleton（基础设施最后销毁）
 
 ```csharp
 // 注册与获取
@@ -128,7 +127,7 @@ Architecture.Instance.UnloadAll();
 
 ### 数据模型（ArchitectureModel）
 
-[`ArchitectureModel`](Assets/FFramework/Core/Architecture/Model/ArchitectureModel.cs) 是数据层基类，继承自 [`IModel`](Assets/FFramework/Core/Architecture/Model/IModel.cs)，内置 `EventSystem`，可发送和监听事件。
+[`ArchitectureModel`](Assets/FFramework/Core/Architecture/Model/ArchitectureModel.cs) 是数据层基类，继承自 [`IModel`](Assets/FFramework/Core/Architecture/Model/IModel.cs)，通过 [`[Inject]`](Assets/FFramework/Core/Architecture/InjectAttribute.cs) 自动注入 [`EventSystem`](Assets/FFramework/Core/EventSystem/EventSystem.cs)，可发送和监听事件。`Dispose()` 时自动注销所有通过 `RegisterEvent` 注册的事件。
 
 ```csharp
 public class PlayerModel : ArchitectureModel
@@ -146,7 +145,11 @@ public class PlayerModel : ArchitectureModel
 
 ### 视图控制器（ArchitectureViewController）
 
-[`ArchitectureViewController`](Assets/FFramework/Core/Architecture/ViewController/ArchitectureViewController.cs) 是视图层基类（MonoBehaviour），`Awake` 时自动注册到 Architecture 并执行依赖注入。
+[`ArchitectureViewController`](Assets/FFramework/Core/Architecture/ViewController/ArchitectureViewController.cs) 是视图层基类（MonoBehaviour），通过 [`[Inject]`](Assets/FFramework/Core/Architecture/InjectAttribute.cs) 自动注入 [`EventSystem`](Assets/FFramework/Core/EventSystem/EventSystem.cs)。`Awake` 时自动注册到 Architecture 并执行依赖注入。
+
+- `AutoRegister` 属性：子类可重写返回 `false` 来禁用自动注册
+- `Initialize()` / `Dispose()` 幂等设计，防止重复调用
+- `OnDestroy()` 时自动注销事件并取消注册
 
 ```csharp
 public class HUDViewController : ArchitectureViewController
@@ -165,7 +168,7 @@ public class HUDViewController : ArchitectureViewController
 
 ### 依赖注入（[Inject]）
 
-使用 [`[Inject]`](Assets/FFramework/Core/Architecture/InjectAttribute.cs) 标记字段或属性，`Architecture` 在初始化时自动解析并注入依赖（Model / ViewController / Singleton）。
+使用 [`[Inject]`](Assets/FFramework/Core/Architecture/InjectAttribute.cs) 标记字段**或属性**，`Architecture` 在注册对象时自动解析并注入依赖（Model / Singleton / EventSystem / Architecture 等）。注入时机在 `Initialize()` 调用之前。
 
 ```csharp
 public class BattleModel : ArchitectureModel
@@ -179,11 +182,11 @@ public class BattleModel : ArchitectureModel
 }
 ```
 
-支持的解析顺序：Model → Singleton（均自动注册）→ EventSystem / Architecture / GameMonoBehavior 等内置单例。
+支持的解析顺序：已注册的 Model → 自动注册未注册的 IModel → 已注册的 Singleton → 自动注册非 Mono 的 ISingleton → EventSystem / Architecture 等内置单例。
 
 ### 数据绑定（BindableProperty）
 
-[`BindableProperty<T>`](Assets/FFramework/Core/BindableProperty.cs) 包装值类型，值变化时自动触发回调。
+[`BindableProperty<T>`](Assets/FFramework/Core/BindableProperty.cs) 包装值类型，值变化时自动触发回调。线程安全（双锁策略），防止死锁。
 
 ```csharp
 // 基础用法
@@ -205,13 +208,14 @@ PlayerName.Value = "NewName";  // 值变化时自动调用 OnNameChanged
 
 特性：
 
-- 线程安全（双重锁）
+- 线程安全（双锁：valueLock + eventLock，值变更回调移出锁外执行）
 - 注册时可选立即回调当前值
-- 自动随 GameObject 销毁注销
+- 自动随 GameObject 销毁注销（通过 [`BindablePropertyAutoUnregister`](Assets/FFramework/Core/BindableProperty.cs) 组件）
+- 支持 `IUnRegister` 接口统一注销
 
 ### 事件系统（EventSystem）
 
-[`EventSystem`](Assets/FFramework/Core/EventSystem/EventSystem.cs) 提供全局事件通信，支持 string 和 struct 两种键类型。
+[`EventSystem`](Assets/FFramework/Core/EventSystem/EventSystem.cs) 继承自 [`SingletonMono<EventSystem>`](Assets/FFramework/Core/SingletonMono.cs)，提供全局事件通信，支持 string 和 struct 两种键类型。
 
 ```csharp
 // 实例 API
@@ -232,51 +236,46 @@ EventSystem.S_Trigger(MyEventType.PlayerDie);
 this.RegisterEvent(_eventSystem, "OnLevelUp", OnLevelUp, gameObject);
 ```
 
-### 生命周期调度（GameMonoBehavior）
+新增特性：
 
-内置的 Update 调度器，统一调度 Update / FixedUpdate / LateUpdate，自动清理已销毁对象。
-
-```csharp
-public class Enemy : MonoBehaviour
-{
-    void Start()
-    {
-        this.RegisterUpdate(OnTick);       // 自动注销（推荐）
-        this.RegisterFixedUpdate(OnFixed);
-    }
-
-    void OnTick()  { /* 每帧执行 */ }
-    void OnFixed() { /* 固定时间步执行 */ }
-}
-
-// 手动注册
-GameMonoBehavior.Instance.RegisterUpdate(MyUpdate);
-GameMonoBehavior.Instance.UnRegisterUpdate(MyUpdate);
-```
+- **触发历史记录**：Editor 模式下自动记录事件触发位置、调用堆栈、参数信息，方便调试
+- **惰性清理**：触发时自动清理已销毁对象的监听器
+- **`UnregisterTarget(object)`**：按目标对象批量注销所有事件
 
 ### 单例模式
 
-[`Singleton<T>`](Assets/FFramework/Core/Singleton.cs)（非 MonoBehaviour）和 [`SingletonMono<T>`](Assets/FFramework/Core/SingletonMono.cs)（MonoBehaviour）提供线程安全的单例实现，自动注册到 Architecture。
+提供两种单例实现，统一实现 [`ISingleton`](Assets/FFramework/Core/Architecture/ISingleton.cs) 接口：
+
+| 类型         | 基类                                                          | 说明                                                       |
+| ------------ | ------------------------------------------------------------- | ---------------------------------------------------------- |
+| Mono 单例    | [`SingletonMono<T>`](Assets/FFramework/Core/SingletonMono.cs) | MonoBehaviour 单例，自动创建 GameObject，DontDestroyOnLoad |
+| 非 Mono 单例 | 实现 `ISingleton` + `Architecture.RegisterInstance<T>()`      | 纯 C# 单例，由 Architecture 管理生命周期                   |
+
+所有单例采用**懒加载**模式，首次访问 `Instance` 时自行初始化，不再需要 Priority 排序。
 
 ```csharp
-// 非 Mono 单例
-public class ConfigManager : Singleton<ConfigManager>
-{
-    protected override void OnSingletonInit() { /* 初始化 */ }
-}
-ConfigManager.Instance.DoSomething();
-
 // Mono 单例（自动创建 GameObject，DontDestroyOnLoad）
 public class AudioManager : SingletonMono<AudioManager>
 {
+    protected override void InitializeSingleton() { /* 初始化 */ }
     public void Play(string name) { }
 }
 AudioManager.Instance.Play("bgm");
+
+// 非 Mono 单例（通过 Architecture 注册）
+public class ConfigManager : ISingleton
+{
+    public void OnSingletonInit() { /* 初始化 */ }
+    public void OnSingletonDispose() { /* 清理 */ }
+}
+Architecture.Instance.RegisterInstance<ConfigManager>();
 ```
+
+[`SingletonMono<T>`](Assets/FFramework/Core/SingletonMono.cs) 会在实例创建后自动注册到 `Architecture` 进行依赖注入和初始化。
 
 ### 数据持久化
 
-[`ArchitectureDataPersistence`](Assets/FFramework/Core/Architecture/ArchitectureDataPersistence.cs) 支持三种模式的成员发现，序列化为 JSON（Newtonsoft）。
+[`ArchitectureDataPersistence`](Assets/FFramework/Core/Architecture/ArchitectureDataPersistence.cs) 支持三种模式的成员发现，序列化为 JSON（Newtonsoft）。使用 `ConcurrentDictionary` 缓存反射结果，避免重复扫描。
 
 | 模式           | 识别方式                                                                                | 适用范围                                |
 | -------------- | --------------------------------------------------------------------------------------- | --------------------------------------- |
@@ -316,7 +315,7 @@ Architecture.Instance.LoadAllData("slot1");
 
 ### Command 模式
 
-将业务操作封装为独立的命令类，实现操作与执行的分离。
+将业务操作封装为独立的命令类，实现操作与执行的分离。支持对象池复用（高频场景）。
 
 ```csharp
 // 1. 定义命令
@@ -341,12 +340,28 @@ int damage = this.SendCommand(new CalculateDamageCommand(50, 1.5f));
 
 // 4. 对象池复用（高频场景）
 this.SendCommand<MoveCommand>(cmd => cmd.SetDirection(Vector3.forward));
+
+// 5. 无需手动 new，自动创建实例
+this.SendCommand<LogCommand>();
 ```
 
 - 接口：[`ICommand`](Assets/FFramework/Core/Architecture/Command/ICommand.cs)、[`ICommand<TResult>`](Assets/FFramework/Core/Architecture/Command/ICommand.cs)、[`ICommandSender`](Assets/FFramework/Core/Architecture/Command/ICommand.cs)
-- 基类：[`AbstractCommand`](Assets/FFramework/Core/Architecture/Command/AbstractCommand.cs)（提供 `GetModel<T>()` / `SendEvent()` 方法）
+- 基类：[`AbstractCommand`](Assets/FFramework/Core/Architecture/Command/AbstractCommand.cs) / [`AbstractCommand<TResult>`](Assets/FFramework/Core/Architecture/Command/AbstractCommand.cs)（提供 `GetModel<T>()` / `SendEvent()` 方法）
 - 对象池：[`CommandPool<T>`](Assets/FFramework/Core/Architecture/Command/CommandPool.cs)
 - 扩展方法：[`CommandExtensions`](Assets/FFramework/Core/Architecture/Command/CommandExtensions.cs)
+
+### 自定义 ScriptableObject
+
+[`CustomScriptableObject`](Assets/FFramework/Core/CustomScriptableObject.cs) 是 ScriptableObject 的基类，内置 Editor 按钮，可在 Inspector 中一键保存资源。
+
+```csharp
+public class GameConfig : CustomScriptableObject
+{
+    public int maxLevel;
+    public float playerSpeed;
+}
+// Inspector 中显示 [保存资源] 按钮，点击即可保存
+```
 
 ---
 
@@ -354,7 +369,7 @@ this.SendCommand<MoveCommand>(cmd => cmd.SetDirection(Vector3.forward));
 
 ### 对象池（ObjectPool）
 
-[`ObjectPool`](Assets/FFramework/Utility/ObjectPool/ObjectPool.cs) 支持通过 Resources 路径或 Prefab 获取 / 回收对象，提供链式扩展方法。
+[`ObjectPool`](Assets/FFramework/Utility/ObjectPool/ObjectPool.cs) 支持通过 Resources 路径或 Prefab 获取 / 回收对象，提供链式扩展方法。每个池独立管理，支持容量限制、惰性清理。
 
 ```csharp
 // 从 Resources 路径获取 / 回收
@@ -380,9 +395,11 @@ public class MyBullet : MonoBehaviour, IPoolObject
 }
 ```
 
+> 详细文档见 [`ObjectPool/ObjectPoolDoc.md`](Assets/FFramework/Utility/ObjectPool/ObjectPoolDoc.md)。
+
 ### 有限状态机（FSM）
 
-[`FSMStateMachine`](Assets/FFramework/Utility/FSM/FSMStateMachine.cs) 泛型状态机，自动缓存状态实例，支持生命周期回调。
+[`FSMStateMachine`](Assets/FFramework/Utility/FSM/FSMStateMachine.cs) 泛型状态机，自动缓存状态实例，支持生命周期回调。状态基类 [`FSMStateBase`](Assets/FFramework/Utility/FSM/FSMStateBase.cs) 实现 [`IFSMState`](Assets/FFramework/Utility/FSM/IFSMState.cs) 接口，支持 OnUpdate、OnFixedUpdate、OnLateUpdate 多种更新模式。
 
 ```csharp
 // 定义状态（继承 FSMStateBase）
@@ -405,6 +422,9 @@ var fsm = new FSMStateMachine(enemy);
 fsm.SetDefault<PatrolState>();
 fsm.ChangeState<ChaseState>();
 
+// 获取持有者（强类型）
+fsm.GetOwner<Enemy>();
+
 // 查询当前状态
 if (fsm.IsCurrentState<PatrolState>()) { /* ... */ }
 var state = fsm.GetCurrentState<ChaseState>();
@@ -412,29 +432,10 @@ var state = fsm.GetCurrentState<ChaseState>();
 // 每帧驱动
 void Update() => fsm.Update();
 void FixedUpdate() => fsm.FixedUpdate();
+void LateUpdate() => fsm.LateUpdate();
 ```
 
 > 详细文档见 [`FSM/README.md`](Assets/FFramework/Utility/FSM/README.md)。
-
-### 计时器（Timer）
-
-[`CountdownTimer`](Assets/FFramework/Utility/Timer/Timer.cs) 和 [`StopwatchTimer`](Assets/FFramework/Utility/Timer/Timer.cs) 提供计时功能。
-
-```csharp
-var countdown = new CountdownTimer(60f);
-countdown.OnTimerStart += () => Debug.Log("开始");
-countdown.OnTimerStop  += () => Debug.Log("结束");
-countdown.Start();
-
-// 每帧驱动
-void Update() => countdown.Tick(Time.deltaTime);
-
-// 秒表
-var stopwatch = new StopwatchTimer();
-stopwatch.Start();
-// ... 一段时间后
-float elapsed = stopwatch.Time;
-```
 
 ### 资源加载（ResLoad）
 
@@ -461,28 +462,7 @@ ResLoad.Instance.LoadMultipleResAsync(
 );
 ```
 
-### 数据存储（DataSave）
-
-[`DataSave`](Assets/FFramework/Utility/DataSave/DataSave.cs) 提供 Binary 和 JSON 两种序列化方式，文件保存在 `Application.persistentDataPath`。
-
-```csharp
-[System.Serializable]
-public class SaveData { public int level; public string name; }
-
-var data = new SaveData { level = 5, name = "Player" };
-
-// JSON 存储
-DataSave.SaveDataToJson("save.json", data);
-var loaded = DataSave.LoadDataFromJson<SaveData>("save.json");
-
-// Binary 存储（支持任何类型）
-DataSave.SaveDataToBinary("save.bin", data);
-var loadedBin = DataSave.LoadDataFromBinary<SaveData>("save.bin");
-
-// 工具方法
-bool exists = DataSave.CheckDataExists("save.json");
-DataSave.DeleteJsonData("save.json");
-```
+> 详细文档见 [`ResLoad/ResLoadDoc.md`](Assets/FFramework/Utility/ResLoad/ResLoadDoc.md)。
 
 ### 场景加载（SceneLoad）
 
@@ -503,6 +483,8 @@ SceneLoad.Instance.ActivatePreloadedScene(op);
 // 卸载场景
 SceneLoad.Instance.UnloadScene("UIScene");
 ```
+
+> 详细文档见 [`SceneLoad/SceneLoadDoc.md`](Assets/FFramework/Utility/SceneLoad/SceneLoadDoc.md)。
 
 ### 动画播放（PlayAnima）
 
@@ -529,6 +511,8 @@ public class PlayerAnima : MonoBehaviour
 }
 ```
 
+> 详细文档见 [`Anima/AnimaDoc.md`](Assets/FFramework/Utility/Anima/AnimaDoc.md)。
+
 ### 震动效果（Shake）
 
 [`ShakeBase`](Assets/FFramework/Utility/Shake/ShakeBase.cs) / [`SmoothShake`](Assets/FFramework/Utility/Shake/SmoothShake.cs) 基于 PerlinNoise 的平滑震动，支持位置和旋转。
@@ -546,9 +530,57 @@ shake.PlayShake(myShakePreset);
 shake.PlayShake(new Vector3(0.2f, 0.2f, 0), new Vector3(0, 0, 3f), 0.5f);
 ```
 
+> 详细文档见 [`Shake/ShakeDoc.md`](Assets/FFramework/Utility/Shake/ShakeDoc.md)。
+
+### UI 系统（UISystem）
+
+[`UISystem`](Assets/FFramework/Utility/UISystem/UISystem.cs) 是 UI 系统核心管理器（继承 [`SingletonMono<UISystem>`](Assets/FFramework/Core/SingletonMono.cs)），负责面板创建、缓存、层级管理和生命周期调度。
+
+特性：
+
+- **六层 UI 层级**：Background / PostProcessing / Content / Popup / Guide / Debug
+- **面板缓存**：自动缓存已创建的面板，支持复用
+- **面板栈管理**：按打开顺序管理面板，支持 `CurrentPanel` 查询
+- **自动锁定/解锁**：同层级面板打开时自动锁定前一个
+- **可替换资源加载器**：通过 `IUIResLoader` 接口支持自定义加载策略
+
+```csharp
+// 打开面板（从 Resources 加载）
+UISystem.Instance.OpenPanel<MainMenuPanel>(UILayer.ContentLayer);
+
+// 打开面板（从 Prefab）
+UISystem.Instance.OpenPanel<MainMenuPanel>(mainMenuPrefab, UILayer.ContentLayer);
+
+// 关闭面板
+UISystem.Instance.CloseCurrentPanel();
+UISystem.Instance.ClosePanel<MainMenuPanel>();
+
+// 查询面板
+UIPanel panel = UISystem.Instance.GetPanel<MainMenuPanel>();
+bool isTop = UISystem.Instance.IsCurrentPanel<MainMenuPanel>();
+
+// 清理
+UISystem.Instance.ClearAllPanels();                   // 清理所有
+UISystem.Instance.ClearPanelsInLayer(UILayer.PopupLayer);  // 清理指定层级
+
+// 自定义资源加载器
+UISystem.Instance.SetUIResLoader(new MyCustomLoader());
+```
+
+| 层级                  | 说明                  |
+| --------------------- | --------------------- |
+| `BackgroundLayer`     | 背景层 - 静态背景     |
+| `PostProcessingLayer` | 后期处理层 - UI 特效  |
+| `ContentLayer`        | 内容层 - 主要 UI 功能 |
+| `PopupLayer`          | 弹窗层 - 消息弹窗     |
+| `GuideLayer`          | 引导层 - 引导操作     |
+| `DebugLayer`          | 调试层 - 调试 UI      |
+
+> 详细文档见 [`UISystem/UISystemDoc.md`](Assets/FFramework/Utility/UISystem/UISystemDoc.md)。
+
 ### UI 面板（UIPanel）
 
-[`UIPanel`](Assets/FFramework/Utility/UISystem/UIPanel.cs) 继承自 [`ArchitectureViewController`](Assets/FFramework/Core/Architecture/ViewController/ArchitectureViewController.cs)，提供面板的显示 / 隐藏 / 锁定和 CanvasGroup 管理。
+[`UIPanel`](Assets/FFramework/Utility/UISystem/UIPanel.cs) 继承自 [`ArchitectureViewController`](Assets/FFramework/Core/Architecture/ViewController/ArchitectureViewController.cs)，提供面板的显示 / 隐藏 / 锁定和 CanvasGroup 管理。面板销毁时自动清理所有事件绑定。
 
 ```csharp
 public class MainMenuPanel : UIPanel
@@ -569,11 +601,18 @@ mainMenuPanel.Show();
 mainMenuPanel.Hide();
 mainMenuPanel.OnLock();    // 锁定交互
 mainMenuPanel.OnUnLock();  // 解锁交互
+
+// 面板属性
+panel.SetAlpha(0.5f);
+panel.SetInteractable(false);
+panel.SetBlocksRaycasts(true);
 ```
+
+UIPanel 生命周期：`Awake` → `OnEnable` / `OnInitialize` → `Start` → `OnShow` / `OnHide` → `OnDestroy` / `OnPanelDestroy`
 
 ### UI 事件绑定（UIEventExtensions）
 
-[`UIEventExtensions`](Assets/FFramework/Utility/UISystem/UIEventExtensions.cs) 提供按钮、开关、滑动条等组件的便捷绑定，自动随面板销毁清理。
+[`UIEventExtensions`](Assets/FFramework/Utility/UISystem/UIEventExtensions.cs) 提供按钮、开关、滑动条等组件的便捷绑定，自动随面板销毁清理。支持子物体递归查找和路径查找。
 
 ```csharp
 // 绑定按钮
@@ -595,6 +634,20 @@ panel.BindButtons(new Dictionary<string, Action>
     { "Btn1", () => Debug.Log("1") },
     { "Btn2", () => Debug.Log("2") },
 });
+
+// 直接组件绑定
+Button attackBtn = panel.GetButton("AttackBtn");
+attackBtn.BindClick(OnAttack, panel);
+
+// 组件获取（支持路径 "Panel/Sub/Button"）
+panel.GetComponent<Button>("StartBtn");
+panel.GetButton("StartBtn");
+panel.GetImage("Avatar");
+
+// 属性设置（链式）
+panel.SetButtonInteractable("StartBtn", false);
+panel.SetTMPText("LevelText", "Level 5");
+panel.SetImageSprite("Avatar", mySprite);
 
 // 主动清理所有已绑定事件
 panel.UnbindAllEvents();
@@ -622,62 +675,14 @@ LocalizationManager.Instance.OnLanguageChanged += (lang) => { };
 LocalizationManager.Instance.OnDataChanged += (groupId, type) => { };
 ```
 
+> 详细文档见 [`Localization/LocalizationDoc.md`](Assets/FFramework/Utility/Localization/LocalizationDoc.md)。
+
 | 组件                                                                                       | 说明                                                         |
 | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------ |
 | [`LocalizationManager`](Assets/FFramework/Utility/Localization/LocalizationManager.cs)     | 核心管理器（单例，CSV 解析，语言切换）                       |
 | [`LocalizationComponent`](Assets/FFramework/Utility/Localization/LocalizationComponent.cs) | UI 组件（可拖拽，配置 Key 后自动监听语言变化刷新文本和字体） |
 | [`LocalizationConfig`](Assets/FFramework/Utility/Localization/LocalizationConfig.cs)       | ScriptableObject 配置资产，定义 CSV 分组和字体映射           |
 | [`LocalizationData`](Assets/FFramework/Utility/Localization/LocalizationData.cs)           | 运行时数据模型（O(1) Key 查询，分组管理）                    |
-
-### 红点系统（RedDotManager）
-
-[`RedDotManager`](Assets/FFramework/Utility/RedDotSystem/RedDotManager.cs) 基于前缀树（Trie）的红点系统，支持路径式管理和多种计算模式。
-
-```csharp
-// 添加红点路径（'/' 分隔）
-RedDotManager.Instance.AddPath("Main/Bag");
-RedDotManager.Instance.AddPath("Main/Bag/Weapon");
-RedDotManager.Instance.AddPath("Main/Bag/Armor");
-
-// 设置叶子节点值
-RedDotManager.Instance.SetCount("Main/Bag/Weapon", 1);
-
-// 设置分支计算模式（默认为 Sum）
-RedDotManager.Instance.SetMode("Main/Bag", ERedDotMode.Max);
-
-// 注册红点更新回调
-RedDotManager.Instance.Register("Main/Bag", (count) =>
-{
-    redDotBadge.SetActive(count > 0);
-});
-
-// 获取当前值
-int count = RedDotManager.Instance.GetCount("Main/Bag");
-```
-
-### 虚拟摇杆（VirtualRocker）
-
-[`VirtualRocker`](Assets/FFramework/Utility/Other/VirtualRocker.cs) 继承 UIPanel，支持固定位置和区域点击两种模式，带 SmoothDamp 平滑输入。
-
-```csharp
-// 获取输入
-Vector2 input = rocker.GetInputVector();
-float horizontal = rocker.GetHorizontal();
-float vertical = rocker.GetVertical();
-
-// 启用 / 禁用
-rocker.SetActive(true);
-rocker.HideAndReset();
-
-// 切换区域点击模式
-rocker.SetAreaClickMode(true);
-rocker.SetClickArea(clickAreaRectTransform);
-
-// 监听事件
-rocker.OnRockerValueChanged.AddListener((vec) => MovePlayer(vec));
-rocker.OnRockerPressed.AddListener(() => Debug.Log("按下"));
-rocker.OnRockerReleased.AddListener(() => Debug.Log("释放"));
-```
 
 ---
 
@@ -714,7 +719,7 @@ rocker.OnRockerReleased.AddListener(() => Debug.Log("释放"));
 
 **Q: ViewController 必须绑定 GameObject 吗？**
 
-A: 是的。`RegisterViewController<T>(GameObject)` 会在 GameObject 上添加组件并初始化。
+A: 是的。`RegisterViewController<T>(GameObject)` 会在 GameObject 上添加组件并初始化。也可以通过将脚本挂载到 GameObject 上，`Awake` 时会自动注册。
 
 **Q: 如何跨场景共享 Model？**
 
@@ -722,7 +727,7 @@ A: 将 Architecture 所在对象设为 DontDestroyOnLoad，或在新场景重新
 
 **Q: BindableProperty 性能如何？**
 
-A: 仅在值真正变化时触发回调（内部有相等性判断），适用于 UI 更新等场景。
+A: 仅在值真正变化时触发回调（内部有相等性判断），适用于 UI 更新等场景。线程安全设计，值变更回调在锁外执行防止死锁。
 
 **Q: 事件名如何管理？**
 
@@ -734,4 +739,11 @@ A: 三种选择：
 
 - Model 自带 `SaveData()` / `LoadData()` 方法，自动序列化 Model 中所有 `BindableProperty<T>`、[`[SaveData]`](Assets/FFramework/Core/Architecture/Model/SaveDataAttribute.cs) 和 `[SerializeField]` 标记的成员
 - 使用 [`SaveDataAttribute`](Assets/FFramework/Core/Architecture/Model/SaveDataAttribute.cs) 精确控制需要持久化的非 BindableProperty 成员
-- 使用 [`DataSave`](Assets/FFramework/Utility/DataSave/DataSave.cs) 工具类自行控制序列化格式
+
+**Q: UI 面板如何管理？**
+
+A: 使用 [`UISystem`](Assets/FFramework/Utility/UISystem/UISystem.cs) 统一管理面板的创建、缓存、层级和生命周期。`UIPanel` 继承自 `ArchitectureViewController`，自动获得依赖注入和事件系统支持。
+
+**Q: 如何自定义 UI 资源加载方式？**
+
+A: 实现 [`IUIResLoader`](Assets/FFramework/Utility/UISystem/UISystem.cs) 接口，通过 `UISystem.Instance.SetUIResLoader(loader)` 注入自定义加载器。
