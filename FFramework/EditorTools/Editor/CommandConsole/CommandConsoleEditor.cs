@@ -116,7 +116,6 @@ namespace FFramework.Editor
         private static VisualElement suggestionDropdown;
         private static List<string> suggestionItems = new List<string>();
         private static int selectedSuggestionIndex = -1;
-        private static bool isNavigatingSuggestion = false;
 
         // 布局常量
         private const float PADDING = 2f;

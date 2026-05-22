@@ -39,6 +39,46 @@ namespace FFramework.Utility
         [SerializeField, Tooltip("格式化参数数组,对应文本中的 {0}、{1} 等占位符")]
         private string[] formatArgs;
 
+        /// <summary>获取或设置格式化参数数组（设置后自动启用格式化并刷新文本）</summary>
+        public string[] FormatArgs
+        {
+            get => formatArgs;
+            set
+            {
+                formatArgs = value;
+                enableFormatting = true;
+                Refresh();
+            }
+        }
+
+        /// <summary>
+        /// 设置指定索引位置的格式化参数并立即刷新文本
+        /// </summary>
+        /// <param name="index">占位符索引，对应 {0}、{1} 等</param>
+        /// <param name="value">要设置的值</param>
+        public void SetFormatArg(int index, string value)
+        {
+            if (formatArgs == null)
+                formatArgs = new string[index + 1];
+            else if (index >= formatArgs.Length)
+                Array.Resize(ref formatArgs, index + 1);
+
+            formatArgs[index] = value;
+            enableFormatting = true;
+            Refresh();
+        }
+
+        /// <summary>
+        /// 批量设置格式化参数并立即刷新文本
+        /// </summary>
+        /// <param name="args">格式化参数，对应文本中的 {0}、{1} 等占位符</param>
+        public void SetFormatArgs(params string[] args)
+        {
+            formatArgs = args;
+            enableFormatting = true;
+            Refresh();
+        }
+
         [SerializeField, Tooltip("UGUI Text 组件(未指定则自动查找)")]
         private Text textComponent;
 
