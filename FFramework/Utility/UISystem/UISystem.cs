@@ -14,6 +14,7 @@ using System.Linq;
 
 namespace FFramework.Utility
 {
+    [AddComponentMenu("FFramework/UI/UISystem")]
     public class UISystem : SingletonMono<UISystem>
     {
         #region UI层级引用

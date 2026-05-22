@@ -482,7 +482,7 @@ namespace FFramework.Editor
                 .OrderBy(k => k)
                 .ToList();
 
-            if (matches == null || matches.Count == 0 || matches.Count == commandCache?.Count)
+            if (matches == null || matches.Count == 0)
             {
                 HideSuggestions();
                 return;
@@ -738,6 +738,9 @@ namespace FFramework.Editor
         {
             var instance = Activator.CreateInstance(info.ClassType) as ICommand;
             if (instance == null) return $"无法创建命令实例: {info.ClassType.Name}";
+
+            // 依赖注入：解析 [Inject] 标记的依赖
+            InjectHelper.AutoInject(instance);
 
             var parameters = GetCommandParameters(info.ClassType);
             if (parameters.Count > 0 && args.Length == 0)

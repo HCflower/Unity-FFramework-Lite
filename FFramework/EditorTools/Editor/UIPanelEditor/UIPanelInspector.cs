@@ -112,8 +112,7 @@ namespace FFramework.Editor
                     GUILayout.Space(2);
                 }
 
-                // 其余字段灰显只读
-                GUI.enabled = false;
+                // 其余字段正常可编辑
                 while (iterator.NextVisible(enterChildren))
                 {
                     enterChildren = false;
@@ -121,7 +120,6 @@ namespace FFramework.Editor
                     EditorGUILayout.PropertyField(sp, true);
                     GUILayout.Space(2);
                 }
-                GUI.enabled = true;
 
                 serializedObject.ApplyModifiedProperties();
             });
