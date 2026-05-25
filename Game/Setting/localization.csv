@@ -1,0 +1,7 @@
+﻿key,ChineseSimplified,English,Japanese
+hp,生命值：{0},HP：{0},ライフ：{0}
+attack,攻击力：{0},AttackPower：{0},攻撃力：{0}
+moveSpeed,移动速度：{0},MoveSpeed：{0},移動速度：{0}
+level,等级：{0},Level：{0},等級：{0}
+exp,经验：{0},Exp：{0},経験：{0}
+coin,金币：{0},Coin：{0},コイン：{0}
