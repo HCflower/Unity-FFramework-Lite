@@ -5,6 +5,7 @@
 - 命名空间（核心）：`FFramework.Core`
 - 命名空间（工具）：`FFramework.Utility`
 - 命名空间（编辑器）：`FFramework.Editor`
+- ！！！需要FMOD和Animancer支持
 
 ---
 
@@ -246,10 +247,10 @@ this.RegisterEvent(_eventSystem, "OnLevelUp", OnLevelUp, gameObject);
 
 提供两种单例实现，统一实现 [`ISingleton`](Assets/FFramework/Core/Architecture/ISingleton.cs) 接口：
 
-| 类型         | 基类                                                         | 说明                                                       |
-| ------------ | ------------------------------------------------------------ | ---------------------------------------------------------- |
+| 类型         | 基类                                                          | 说明                                                       |
+| ------------ | ------------------------------------------------------------- | ---------------------------------------------------------- |
 | Mono 单例    | [`SingletonMono<T>`](Assets/FFramework/Core/SingletonMono.cs) | MonoBehaviour 单例，自动创建 GameObject，DontDestroyOnLoad |
-| 非 Mono 单例 | 实现 `ISingleton` + `Architecture.RegisterInstance<T>()` | 纯 C# 单例，由 Architecture 管理生命周期                   |
+| 非 Mono 单例 | 实现 `ISingleton` + `Architecture.RegisterInstance<T>()`      | 纯 C# 单例，由 Architecture 管理生命周期                   |
 
 所有单例采用**懒加载**模式，首次访问 `Instance` 时自行初始化，不再需要 Priority 排序。
 
@@ -277,11 +278,11 @@ Architecture.Instance.RegisterInstance<ConfigManager>();
 
 [`ArchitectureDataPersistence`](Assets/FFramework/Core/Architecture/ArchitectureDataPersistence.cs) 支持三种模式的成员发现，序列化为 JSON（Newtonsoft）。使用 `ConcurrentDictionary` 缓存反射结果，避免重复扫描。
 
-| 模式            | 识别方式                                                                               | 适用范围                                 |
-| --------------- | -------------------------------------------------------------------------------------- | ---------------------------------------- |
-| ① 自动检测     | `BindableProperty<T>` 类型自动识别                                                   | 所有 public 字段 / 属性                  |
-| ② 显式标记     | [`[SaveData]`](Assets/FFramework/Core/Architecture/Model/SaveDataAttribute.cs) 属性标记 | 任意可访问性的字段 / 属性（最高优先级）  |
-| ③ Unity 序列化 | `[SerializeField]` 自动识别                                                          | 非 `UnityEngine.Object` 引用类型的字段 |
+| 模式           | 识别方式                                                                                | 适用范围                                |
+| -------------- | --------------------------------------------------------------------------------------- | --------------------------------------- |
+| ① 自动检测     | `BindableProperty<T>` 类型自动识别                                                      | 所有 public 字段 / 属性                 |
+| ② 显式标记     | [`[SaveData]`](Assets/FFramework/Core/Architecture/Model/SaveDataAttribute.cs) 属性标记 | 任意可访问性的字段 / 属性（最高优先级） |
+| ③ Unity 序列化 | `[SerializeField]` 自动识别                                                             | 非 `UnityEngine.Object` 引用类型的字段  |
 
 > 三种模式混合扫描时自动去重（按成员名），同一成员仅保存一次。
 
@@ -567,8 +568,8 @@ UISystem.Instance.ClearPanelsInLayer(UILayer.PopupLayer);  // 清理指定层级
 UISystem.Instance.SetUIResLoader(new MyCustomLoader());
 ```
 
-| 层级                    | 说明                  |
-| ----------------------- | --------------------- |
+| 层级                  | 说明                  |
+| --------------------- | --------------------- |
 | `BackgroundLayer`     | 背景层 - 静态背景     |
 | `PostProcessingLayer` | 后期处理层 - UI 特效  |
 | `ContentLayer`        | 内容层 - 主要 UI 功能 |
@@ -677,8 +678,8 @@ LocalizationManager.Instance.OnDataChanged += (groupId, type) => { };
 
 > 详细文档见 [`Localization/LocalizationDoc.md`](Assets/FFramework/Utility/Localization/LocalizationDoc.md)。
 
-| 组件                                                                                      | 说明                                                         |
-| ----------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| 组件                                                                                       | 说明                                                         |
+| ------------------------------------------------------------------------------------------ | ------------------------------------------------------------ |
 | [`LocalizationManager`](Assets/FFramework/Utility/Localization/LocalizationManager.cs)     | 核心管理器（单例，CSV 解析，语言切换）                       |
 | [`LocalizationComponent`](Assets/FFramework/Utility/Localization/LocalizationComponent.cs) | UI 组件（可拖拽，配置 Key 后自动监听语言变化刷新文本和字体） |
 | [`LocalizationConfig`](Assets/FFramework/Utility/Localization/LocalizationConfig.cs)       | ScriptableObject 配置资产，定义 CSV 分组和字体映射           |
@@ -690,25 +691,25 @@ LocalizationManager.Instance.OnDataChanged += (groupId, type) => { };
 
 ### 工具窗口
 
-| 工具                     | 入口                                      | 说明                                                 |
-| ------------------------ | ----------------------------------------- | ---------------------------------------------------- |
-| **创建文件夹工具** | `FFramework / 创建文件夹工具`           | 快速创建项目文件夹结构，支持预设模板                 |
-| **资源压缩工具**   | `FFramework / 资源压缩工具`             | 图片 / 音频 / 模型资源压缩，支持拖拽批量处理         |
-| **命令控制台**     | `Tools / 命令控制台`（或 LeftCtrl+Tab） | 运行时嵌入 Game 视图的命令行调试工具（仅 Play 模式） |
-| **打开数据持久化文件夹** | `FFramework / 打开数据持久化文件夹`   | 一键打开 `Application.persistentDataPath/SaveData`，查看 Model 的 JSON 存档文件 |
+| 工具                     | 入口                                    | 说明                                                                            |
+| ------------------------ | --------------------------------------- | ------------------------------------------------------------------------------- |
+| **创建文件夹工具**       | `FFramework / 创建文件夹工具`           | 快速创建项目文件夹结构，支持预设模板                                            |
+| **资源压缩工具**         | `FFramework / 资源压缩工具`             | 图片 / 音频 / 模型资源压缩，支持拖拽批量处理                                    |
+| **命令控制台**           | `Tools / 命令控制台`（或 LeftCtrl+Tab） | 运行时嵌入 Game 视图的命令行调试工具（仅 Play 模式）                            |
+| **打开数据持久化文件夹** | `FFramework / 打开数据持久化文件夹`     | 一键打开 `Application.persistentDataPath/SaveData`，查看 Model 的 JSON 存档文件 |
 
 ### 自定义 Inspector
 
-| 组件                                   | 说明                                                     |
-| -------------------------------------- | -------------------------------------------------------- |
+| 组件                             | 说明                                                     |
+| -------------------------------- | -------------------------------------------------------- |
 | **UIPanel Inspector**            | 自动附加到 UIPanel Inspector，列出所有绑定事件的 UI 组件 |
 | **LocalizationManager Editor**   | 提供语言切换、状态信息、调试面板                         |
 | **LocalizationComponent Editor** | 提供 Key 选择、预览等功能                                |
 
 ### Editor 特性
 
-| 特性                                                                                   | 说明                                     |
-| -------------------------------------------------------------------------------------- | ---------------------------------------- |
+| 特性                                                                                    | 说明                                     |
+| --------------------------------------------------------------------------------------- | ---------------------------------------- |
 | [`[Button]`](Assets/FFramework/EditorPropertyDrawer/ButtonAttribute.cs)                 | Inspector 中显示可点击按钮，调用指定方法 |
 | [`[ShowOnly]`](Assets/FFramework/EditorPropertyDrawer/ShowOnlyAttribute.cs)             | Inspector 中只读显示字段值               |
 | [`[TextLabel]`](Assets/FFramework/EditorPropertyDrawer/TextLabelAttribute.cs)           | 为字段添加自定义描述文本                 |
