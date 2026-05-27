@@ -13,6 +13,17 @@ using System;
 namespace FFramework.Utility
 {
     /// <summary>
+    /// 动画事件时间模式
+    /// </summary>
+    public enum AnimaEventMode
+    {
+        /// <summary>归一化进度 (0.0 ~ 1.0)</summary>
+        Progress,
+        /// <summary>真实时间（秒）</summary>
+        Time
+    }
+
+    /// <summary>
     /// 动画播放配置参数
     /// </summary>
     public class AnimaArgs
@@ -56,9 +67,9 @@ namespace FFramework.Utility
         public Action OnEnd = null;
 
         /// <summary>
-        /// 定时事件列表（归一化时间 + 回调），存储在 AnimaArgs 上可复用
+        /// 定时事件列表（值 + 回调 + 模式），存储在 AnimaArgs 上可复用
         /// </summary>
-        public List<(float normalizedTime, Action callback)> TimedEvents { get; private set; } = new List<(float, Action)>();
+        public List<(float value, Action callback, AnimaEventMode mode)> TimedEvents { get; private set; } = new List<(float, Action, AnimaEventMode)>();
 
         public AnimaArgs(AnimationClip clip, float transitionTime = 0.15f, FadeMode fadeMode = FadeMode.FixedDuration, float startTime = 0.0f, float speed = 1.0f, Action onEnd = null)
         {
@@ -71,13 +82,24 @@ namespace FFramework.Utility
         }
 
         /// <summary>
-        /// 添加一个定时事件（归一化时间 0.0 ~ 1.0）
+        /// 添加一个定时事件（默认归一化进度 0.0 ~ 1.0）
         /// </summary>
         /// <returns>返回自身，支持链式调用</returns>
         public AnimaArgs AddEvent(float normalizedTime, Action callback)
         {
             if (normalizedTime >= 0f && callback != null)
-                TimedEvents.Add((normalizedTime, callback));
+                TimedEvents.Add((normalizedTime, callback, AnimaEventMode.Progress));
+            return this;
+        }
+
+        /// <summary>
+        /// 添加一个定时事件，可指定模式（Progress 归一化进度 / Time 真实秒数）
+        /// </summary>
+        /// <returns>返回自身，支持链式调用</returns>
+        public AnimaArgs AddEvent(float value, Action callback, AnimaEventMode mode)
+        {
+            if (value >= 0f && callback != null)
+                TimedEvents.Add((value, callback, mode));
             return this;
         }
 
@@ -132,7 +154,8 @@ namespace FFramework.Utility
         /// <summary>是否循环播放</summary>
         public bool IsLooping => currentState != null && currentState.IsValid() && currentState.IsLooping;
 
-        /// <summary>当前播放的定时事件进度点（Editor 锚点绘制用），缓存避免 GC 分配</summary>
+        /// <summary>当前播放的定时事件进度点（Editor 锚点绘制用），缓存避免 GC 分配。
+        /// Time 模式的事件会自动转换为归一化进度显示（循环动画取模处理）</summary>
         public IReadOnlyList<float> EventPoints
         {
             get
@@ -140,13 +163,30 @@ namespace FFramework.Utility
                 if (lastArgs == null || lastArgs.TimedEvents.Count == 0)
                     return System.Array.Empty<float>();
 
-                int hash = lastArgs.GetHashCode();
-                if (cachedEventPoints != null && cachedEventPoints.Length == lastArgs.TimedEvents.Count && cachedEventPointsHash == hash)
+                int count = lastArgs.TimedEvents.Count;
+                // 用 lastArgs 引用 + 事件数量做缓存键，比 GetHashCode 更可靠
+                int hash = lastArgs.TimedEvents.GetHashCode();
+                if (cachedEventPoints != null && cachedEventPoints.Length == count && cachedEventPointsHash == hash)
                     return cachedEventPoints;
 
-                cachedEventPoints = new float[lastArgs.TimedEvents.Count];
-                for (int i = 0; i < cachedEventPoints.Length; i++)
-                    cachedEventPoints[i] = lastArgs.TimedEvents[i].normalizedTime;
+                float clipLength = lastArgs.Clip != null ? lastArgs.Clip.length : 1f;
+                bool isLooping = (lastArgs.Clip != null && lastArgs.Clip.isLooping) || loopRequested;
+                cachedEventPoints = new float[count];
+                for (int i = 0; i < count; i++)
+                {
+                    var evt = lastArgs.TimedEvents[i];
+                    if (evt.mode == AnimaEventMode.Time && clipLength > 0f)
+                    {
+                        // 与 InternalPlay 保持一致：循环动画取模
+                        cachedEventPoints[i] = isLooping
+                            ? (evt.value % clipLength) / clipLength
+                            : Mathf.Clamp01(evt.value / clipLength);
+                    }
+                    else
+                    {
+                        cachedEventPoints[i] = evt.value;
+                    }
+                }
                 cachedEventPointsHash = hash;
                 return cachedEventPoints;
             }
@@ -270,7 +310,7 @@ namespace FFramework.Utility
             state.Time = args.StartTime;
             state.Speed = args.Speed;
 
-            // 获取并清理旧事件（防止旧状态的事件残留）
+            // 获取事件序列引用并清理旧事件（防止旧状态的事件残留）
             var events = state.Events(this);
             events.Clear();
             events.OnEnd = args.OnEnd;
@@ -278,9 +318,28 @@ namespace FFramework.Utility
             // 自动绑定 AnimaArgs 上的定时事件（一次配置，多次复用）
             if (args.TimedEvents.Count > 0)
             {
-                foreach (var (time, callback) in args.TimedEvents)
+                float clipLength = args.Clip.length;
+                // 判断循环：Clip 自身循环 或 组件级循环标记
+                bool isLooping = args.Clip.isLooping || loopRequested;
+                foreach (var (value, callback, mode) in args.TimedEvents)
                 {
-                    state.Events(this).Add(time, callback);
+                    float normalizedTime;
+                    if (mode == AnimaEventMode.Time)
+                    {
+                        // Time 模式：秒数 → 归一化进度
+                        if (clipLength <= 0f)
+                            normalizedTime = 0f;
+                        else if (isLooping)
+                            // 循环动画：对 clipLength 取模再归一化，确保在 [0, 1) 范围内
+                            normalizedTime = (value % clipLength) / clipLength;
+                        else
+                            normalizedTime = Mathf.Clamp01(value / clipLength);
+                    }
+                    else
+                    {
+                        normalizedTime = value;
+                    }
+                    events.Add(normalizedTime, callback);
                 }
             }
 

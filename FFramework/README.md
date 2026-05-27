@@ -510,7 +510,7 @@ emitter.SetVolume(0.8f).SetLoop(true).Play("event:/BGM");
 
 ### 动画播放（PlayAnima）
 
-[`PlayAnima`](Assets/FFramework/Utility/AnimancerAnima/PlayAnima.cs) 基于 Animancer 的动画播放组件，通过 [`AnimaArgs`](Assets/FFramework/Utility/AnimancerAnima/PlayAnima.cs) 配置播放参数和定时事件，支持进度控制和暂停/恢复。
+[`PlayAnima`](Assets/FFramework/Utility/AnimancerAnima/PlayAnima.cs) 基于 Animancer 的动画播放组件，通过 [`AnimaArgs`](Assets/FFramework/Utility/AnimancerAnima/PlayAnima.cs) 配置播放参数和定时事件，支持 `Progress`（归一化进度）和 `Time`（真实秒数）两种事件时间模式。
 
 ```csharp
 public class PlayerAnima : MonoBehaviour
@@ -523,11 +523,12 @@ public class PlayerAnima : MonoBehaviour
     {
         anima = GetComponent<PlayAnima>();
 
-        // 创建可复用的参数（事件一次配置，多次播放生效）
+        // 按归一化进度（Progress）配置事件
         runArgs = new AnimaArgs(runClip, speed: 1.5f)
-            .AddEvent(0.3f, () => PlayFootstepSound())
-            .AddEvent(0.6f, () => SpawnDustEffect());
+            .AddEvent(0.15f, () => PlayFootstepSound(), AnimaEventMode.Time)
+            .AddEvent(0.65f, () => PlayFootstepSound(), AnimaEventMode.Time);
 
+        // 按真实秒数（Time）配置事件
         idleArgs = new AnimaArgs(idleClip, onEnd: () => Debug.Log("Idle 结束"));
     }
 

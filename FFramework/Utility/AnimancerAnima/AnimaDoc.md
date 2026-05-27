@@ -1,8 +1,8 @@
 # PlayAnima 动画播放工具
 
-> 命名空间：`PlayAnima` 及关联类型在全局命名空间
+> 命名空间：`FFramework.Utility`
 
-基于 **Animancer** 的轻量动画播放封装，提供简洁的 API 用于播放、事件触发、进度控制和触发点回调。支持 Editor 进度面板可视化调试。
+基于 **Animancer** 的轻量动画播放封装，提供简洁的 API 用于播放、事件触发、进度控制和定时事件回调。支持 Editor 进度面板可视化调试。
 
 ---
 
@@ -17,25 +17,29 @@
 ```csharp
 var playAnima = GetComponent<PlayAnima>();
 
-// 创建动画参数
+// 方式一：通过 AnimaArgs 参数播放（推荐）
 var args = new AnimaArgs(animationClip, transitionTime: 0.15f, speed: 1.0f);
 playAnima.PlayAnimaClip(args);
+
+// 方式二：直接传 AnimationClip（使用默认参数）
+playAnima.PlayAnimaClip(animationClip);
 ```
 
-### 3. 带事件的动画
+### 3. 带定时事件的动画
 
 ```csharp
-// 在动画的 0.5 秒处触发回调
-playAnima.PlayAnimaWithEvent(args, 0.5f, () => {
-    Debug.Log("动画事件触发！");
-});
+// 方式一：使用归一化进度（0.0 ~ 1.0）
+var args = new AnimaArgs(clip)
+    .AddEvent(0.5f, () => { Debug.Log("50% 处触发"); })
+    .AddEvent(0.8f, () => { Debug.Log("80% 处触发"); });
 
-// 多个事件
-var events = new (float, Action)[] {
-    (0.3f, () => PlaySound()),
-    (0.7f, () => SpawnEffect())
-};
-playAnima.PlayAnimaWithEvents(args, events);
+playAnima.PlayAnimaClip(args);
+
+// 方式二：使用真实秒数（需指定 AnimaEventMode.Time）
+var args2 = new AnimaArgs(clip)
+    .AddEvent(1.5f, () => Debug.Log("1.5 秒处触发"), AnimaEventMode.Time);
+
+playAnima.PlayAnimaClip(args2);
 ```
 
 ### 4. 暂停 / 恢复 / 停止
@@ -43,20 +47,7 @@ playAnima.PlayAnimaWithEvents(args, events);
 ```csharp
 playAnima.Pause();   // 暂停
 playAnima.Resume();  // 恢复
-playAnima.Stop();    // 停止并清理
-```
-
-### 5. 触发点系统（持久化，Editor 可见）
-
-```csharp
-playAnima
-    .ClearTriggers()
-    .AddTrigger(AnimaTriggerMode.Progress, 0.3f, () => Debug.Log("30% 处触发"))
-    .AddTrigger(AnimaTriggerMode.Time, 1.5f, () => Debug.Log("第 1.5 秒触发"))
-    .PlayAnimaClip(args);
-
-// 也可以通过事件订阅
-playAnima.OnReached += point => Debug.Log($"触发点: {point.mode} = {point.value}");
+playAnima.Stop();    // 停止并清理状态
 ```
 
 ---
@@ -73,9 +64,17 @@ playAnima.OnReached += point => Debug.Log($"触发点: {point.mode} = {point.val
 | `StartTime` | `float` | `0.0f` | 起始播放时间（秒） |
 | `Speed` | `float` | `1.0f` | 播放速度 |
 | `OnEnd` | `Action` | `null` | 播放结束回调 |
-| `TimedEvents` | `List<(float, Action)>` | 空列表 | 定时事件列表（存储在 args 上，可复用） |
-| `AddEvent(float, Action)` | 方法 | — | 添加定时事件，返回自身（链式） |
+| `TimedEvents` | `List<(float, Action, AnimaEventMode)>` | 空列表 | 定时事件列表（存储在 args 上，可复用） |
+| `AddEvent(float, Action)` | 方法 | — | 添加定时事件（默认 Progress 归一化进度），返回自身（链式） |
+| `AddEvent(float, Action, AnimaEventMode)` | 方法 | — | 添加定时事件，可指定 Progress(归一化) / Time(秒) |
 | `ClearTimedEvents()` | 方法 | — | 清除所有定时事件，返回自身 |
+
+### AnimaEventMode 事件时间模式
+
+| 值 | 说明 |
+|------|------|
+| `Progress` | 归一化进度 0.0 ~ 1.0 |
+| `Time` | 真实时间（秒） |
 
 ### FadeMode 过渡模式
 
@@ -88,60 +87,38 @@ playAnima.OnReached += point => Debug.Log($"触发点: {point.mode} = {point.val
 | `FromStart` | 从开始播放 |
 | `NormalizedFromStart` | 归一化从开始播放 |
 
-### PlayAnima 方法（播放）
+### PlayAnima 播放方法
 
 | 方法 | 说明 |
 |------|------|
 | `PlayAnimaClip(AnimaArgs)` | 播放动画片段 |
-| `PlayAnimaClip(AnimationClip, ...)` | 兼容旧代码的重载版本 |
+| `PlayAnimaClip(AnimationClip, ...)` | 兼容旧代码的重载，内部构造 AnimaArgs |
 | `PlayAnimaWithEvent(AnimaArgs, float, Action)` | 播放 + 单个时间点事件（Animancer 事件） |
 | `PlayAnimaWithEvents(AnimaArgs, IEnumerable<…>)` | 播放 + 多个时间点事件（Animancer 事件） |
 
-### PlayAnima 方法（播放控制）★ 新增
+### PlayAnima 播放控制
 
 | 方法 | 说明 |
 |------|------|
+| `SetSpeed(float)` | 设置播放速度，返回自身（链式） |
+| `SetLoop(bool)` | 设置是否循环播放，返回自身（链式） |
 | `Pause()` | 暂停播放（Speed = 0，保留原速度） |
 | `Resume()` | 恢复播放（恢复暂停前的速度） |
 | `Stop()` | 停止播放并清理状态 |
 
-### PlayAnima 属性（状态查询）★ 新增
+### PlayAnima 状态查询
 
 | 属性 | 类型 | 说明 |
 |------|------|------|
-| `IsPlaying` | `bool` | 是否正在播放 |
-| `IsPaused` | `bool` | 是否已暂停（Speed == 0） |
-| `IsValid` | `bool` | 当前是否有有效的动画状态（等同于 IsPlaying） |
+| `IsPlaying` | `bool` | 是否正在播放中 |
+| `IsPaused` | `bool` | 是否已暂停（Speed == 0 且有权重） |
+| `IsValid` | `bool` | 当前是否有有效的动画状态 |
 | `IsLooping` | `bool` | 当前动画是否循环播放 |
-| `PlaybackProgress` | `float` | 播放进度 0.0 ~ 1.0（可读写，循环动画自动取余） |
+| `EventPoints` | `IReadOnlyList<float>` | 当前 AnimaArgs 的定时事件进度点（Editor 锚点绘制用，Time 模式自动转换为归一化） |
+| `PlaybackProgress` | `float` | 播放进度 0.0~1.0（可读写，循环动画自动取余） |
 | `CurrentTime` | `float` | 当前播放时间（秒，循环动画返回周期内时间） |
 | `TotalDuration` | `float` | 动画总时长（秒） |
 | `CurrentClipName` | `string` | 当前动画片段名称 |
-
-### PlayAnima 触发点 ★ 新增
-
-| 成员 | 类型 | 说明 |
-|------|------|------|
-| `AddTrigger(mode, value, callback)` | 方法 | 添加触发点，返回自身（链式） |
-| `ClearTriggers()` | 方法 | 移除所有触发点，返回自身 |
-| `ResetTriggers()` | 方法 | 重置触发状态（播放/循环时自动调用） |
-| `TriggerPoints` | `IReadOnlyList<AnimaTriggerPoint>` | 已注册的触发点列表（Editor 绘制用） |
-| `OnReached` | `event` | 触发点到达时的事件 |
-
-### AnimaTriggerMode 枚举
-
-| 值 | 说明 | value 含义 |
-|------|------|------------|
-| `Progress` | 按进度触发 | 归一化进度 0.0 ~ 1.0 |
-| `Time` | 按时间触发 | 秒数 |
-
-### AnimaTriggerPoint 结构体
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `mode` | `AnimaTriggerMode` | 触发模式 |
-| `value` | `float` | 触发值 |
-| `callback` | `Action` | 触发回调 |
 
 ---
 
@@ -153,18 +130,7 @@ playAnima.OnReached += point => Debug.Log($"触发点: {point.mode} = {point.val
 - **播放/暂停按钮** — 使用 Unity 内置按钮
 - **动画名称** — 显示当前播放的 AnimationClip 名称
 - **时间标签** — 秒制格式（如 `1.25s / 2.50s`），循环动画追加 `(循环)` 后缀
-- **触发点可视化** — 橙色竖线标记触发点位置
-
----
-
-## 两种事件机制对比
-
-| 特性 | Animancer 事件 (`PlayAnimaWithEvent`) | 触发点系统 (`AddTrigger`) |
-|------|------|------|
-| 生命周期 | 跟随 AnimancerState，一次性 | 持久存储在 PlayAnima 上 |
-| 重复播放 | 每次播放需重新设置 | 自动重置，可复用 |
-| Editor 可见 | ❌ | ✅ 橙色竖线可视化 |
-| 适用场景 | 一次性特定动画的精确回调 | 通用的常驻动画事件 |
+- **事件锚点** — 橙色竖线标记 `AnimaArgs.TimedEvents` 中注册的事件位置
 
 ---
 
@@ -175,4 +141,6 @@ playAnima.OnReached += point => Debug.Log($"触发点: {point.mode} = {point.val
 - 动画结束回调通过 `AnimancerState.Events.OnEnd` 实现
 - 暂停通过 `Speed = 0` 实现（非 Animancer 原生 Pause），恢复时还原原速度
 - 循环动画的 `PlaybackProgress` 和 `CurrentTime` 自动取余，始终反映当前周期内状态
-- `Update()` 仅在存在触发点时运行，无触发点时零开销
+- 定时事件存储在 `AnimaArgs` 上，可在多次播放中复用
+- `AnimaEventMode.Time` 模式会在播放时自动将秒数转换为归一化进度传入 Animancer
+- `EventPoints` 属性会将 Time 模式的事件自动转换为归一化进度（除以 Clip 长度）用于 Editor 显示
