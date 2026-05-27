@@ -28,6 +28,7 @@
   - [有限状态机（FSM）](#有限状态机-fsm)
   - [资源加载（ResLoad）](#资源加载-resload)
   - [场景加载（SceneLoad）](#场景加载-sceneload)
+  - [FMOD 音频（FMODExpand）](#fmod-音频-fmodexpand)
   - [动画播放（PlayAnima）](#动画播放-playanima)
   - [震动效果（Shake）](#震动效果-shake)
   - [UI 系统（UISystem）](#ui-系统-uisystem)
@@ -487,32 +488,58 @@ SceneLoad.Instance.UnloadScene("UIScene");
 
 > 详细文档见 [`SceneLoad/SceneLoadDoc.md`](Assets/FFramework/Utility/SceneLoad/SceneLoadDoc.md)。
 
+### FMOD 音频（FMODExpand）
+
+提供两种 FMOD 音频播放方案：
+
+| 组件                                                                           | 说明                                           | 适用场景                 |
+| ------------------------------------------------------------------------------ | ---------------------------------------------- | ------------------------ |
+| [`FMODSimpleAudio`](Assets/FFramework/Utility/FMODExpand/FMODSimpleAudio.cs)   | 静态工具类，一次性音效 + 音量控制              | SFX（打击、UI 点击等）   |
+| [`FMODSoundEmitter`](Assets/FFramework/Utility/FMODExpand/FMODSoundEmitter.cs) | MonoBehaviour 组件，3D/2D 音频 + 触发点 + 进度 | 持续播放、循环、空间音频 |
+
+```csharp
+// 一次性音效（支持音量）
+FMODSimpleAudio.PlayOneShot("event:/Hit1", 0.5f);
+
+// 持续控制的音频组件
+var emitter = GetComponent<FMODSoundEmitter>();
+emitter.SetVolume(0.8f).SetLoop(true).Play("event:/BGM");
+```
+
+> 详细文档见 [`FMODExpand/FMODExpandDoc.md`](Assets/FFramework/Utility/FMODExpand/FMODExpandDoc.md)。
+
 ### 动画播放（PlayAnima）
 
-[`PlayAnima`](Assets/FFramework/Utility/Anima/PlayAnima.cs) 基于 Animancer 的动画播放，支持动画事件。
+[`PlayAnima`](Assets/FFramework/Utility/AnimancerAnima/PlayAnima.cs) 基于 Animancer 的动画播放组件，通过 [`AnimaArgs`](Assets/FFramework/Utility/AnimancerAnima/PlayAnima.cs) 配置播放参数和定时事件，支持进度控制和暂停/恢复。
 
 ```csharp
 public class PlayerAnima : MonoBehaviour
 {
-    private PlayAnima _anima;
-    void Awake() => _anima = GetComponent<PlayAnima>();
+    private PlayAnima anima;
+    private AnimaArgs runArgs;
+    private AnimaArgs idleArgs;
 
-    void Attack()
+    void Awake()
     {
-        _anima.PlayAnimaClip(new AnimaArgs
-        {
-            clip = attackClip,
-            transitionTime = 0.1f
-        });
+        anima = GetComponent<PlayAnima>();
 
-        // 带事件（在 0.5 归一化时间触发伤害判定）
-        _anima.PlayAnimaWithEvent(new AnimaArgs { clip = attackClip },
-            0.5f, () => DealDamage());
+        // 创建可复用的参数（事件一次配置，多次播放生效）
+        runArgs = new AnimaArgs(runClip, speed: 1.5f)
+            .AddEvent(0.3f, () => PlayFootstepSound())
+            .AddEvent(0.6f, () => SpawnDustEffect());
+
+        idleArgs = new AnimaArgs(idleClip, onEnd: () => Debug.Log("Idle 结束"));
     }
+
+    void Move() => anima.PlayAnimaClip(runArgs);
+    void Idle() => anima.PlayAnimaClip(idleArgs);
+
+    void Pause() => anima.Pause();
+    void Stop()  => anima.Stop();
 }
 ```
 
-> 详细文档见 [`Anima/AnimaDoc.md`](Assets/FFramework/Utility/Anima/AnimaDoc.md)。
+> 详细文档见 [`AnimancerAnima/AnimaDoc.md`](Assets/FFramework/Utility/AnimancerAnima/AnimaDoc.md)。
 
 ### 震动效果（Shake）
 
@@ -702,6 +729,8 @@ LocalizationManager.Instance.OnDataChanged += (groupId, type) => { };
 
 | 组件                             | 说明                                                     |
 | -------------------------------- | -------------------------------------------------------- |
+| **PlayAnima Editor**             | 进度条拖拽 + 播放/暂停按钮 + 动画名 + 时间 + 事件锚点    |
+| **FMODSoundEmitter Editor**      | 进度条拖拽 + 播放/暂停按钮 + 事件路径 + 时间 + 触发点    |
 | **UIPanel Inspector**            | 自动附加到 UIPanel Inspector，列出所有绑定事件的 UI 组件 |
 | **LocalizationManager Editor**   | 提供语言切换、状态信息、调试面板                         |
 | **LocalizationComponent Editor** | 提供 Key 选择、预览等功能                                |
