@@ -308,6 +308,16 @@ namespace FFramework.Editor
             root.style.paddingTop = PADDING;
             root.style.overflow = Overflow.Hidden;
 
+            // ESC 关闭控制台
+            root.RegisterCallback<KeyDownEvent>(evt =>
+            {
+                if (evt.keyCode == KeyCode.Escape)
+                {
+                    HideConsole();
+                    evt.StopPropagation();
+                }
+            });
+
             // ===== 输出区域 =====
             outputContainer = new VisualElement { name = "outputContainer" };
             outputContainer.style.flexGrow = 1;

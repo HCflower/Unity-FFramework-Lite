@@ -2,9 +2,9 @@
 // 描述：本地化管理器的自定义 Inspector - UI Toolkit 风格
 // 作者：HCFlower
 // 创建时间：2026-05-18
-// 版本：2.0.0
+// 版本：2.1.0
 // 修改：
-//   v2.0.0 - 从 IMGUI (EditorGUILayout) 迁移至 UI Toolkit (VisualElement)
+//   v2.1.0 - 优化 Inspector 样式，对齐编辑器风格
 // =============================================================
 using System.Collections.Generic;
 using UnityEngine.UIElements;
@@ -27,8 +27,10 @@ namespace FFramework.Utility
         private LocalizationManager manager;
         private PopupField<string> languagePopup;
         private Label statusLabel;
-        private Label currentLangLabel;
         private List<string> languageOptions = new List<string>();
+
+        // 配色常量
+        private static readonly Color BoxBgColor = new(0.208f, 0.208f, 0.208f); // #353535
 
         #endregion
 
@@ -37,105 +39,140 @@ namespace FFramework.Utility
         public override VisualElement CreateInspectorGUI()
         {
             manager = target as LocalizationManager;
-            var root = new VisualElement();
+            var root = new VisualElement
+            {
+                style =
+                {
+                    paddingLeft = 0,
+                    paddingRight = 0,
+                    paddingTop = 2,
+                    paddingBottom = 2,
+                }
+            };
+
+            // 设置 InspectorElement（父级容器）的左右边距为 6px
+            root.RegisterCallback<AttachToPanelEvent>(_ =>
+            {
+                var parent = root.parent;
+                if (parent != null)
+                {
+                    parent.style.paddingLeft = 6;
+                    parent.style.paddingRight = 6;
+                }
+            });
 
             // ==================== 标题 ====================
-            var header = new Label("本地化管理器");
-            header.style.unityFontStyleAndWeight = FontStyle.Bold;
-            header.style.unityTextAlign = TextAnchor.MiddleCenter;
-            header.style.fontSize = 16;
-            header.style.marginBottom = 2;
-            header.style.marginTop = 2;
+            var header = new Label("本地化管理器")
+            {
+                style =
+                {
+                    unityFontStyleAndWeight = FontStyle.Bold,
+                    unityTextAlign = TextAnchor.MiddleCenter,
+                    fontSize = 16,
+                    marginBottom = 2,
+                    marginTop = 2,
+                }
+            };
             root.Add(header);
 
-            var separator = new VisualElement();
-            separator.style.height = 1;
-            separator.style.backgroundColor = new Color(0.5f, 0.5f, 0.5f, 0.5f);
-            separator.style.marginBottom = 4;
-            separator.style.marginTop = 4;
-            root.Add(separator);
+            // ==================== 语言切换（包裹区域） ====================
+            root.Add(CreateBox("语言切换", BuildLanguageContent));
 
-            // ==================== 配置资产 ====================
-            BuildConfigReference(root);
-
-            // ==================== 语言切换 ====================
-            BuildLanguageSelector(root);
-
-            // ==================== 状态信息 ====================
-            BuildStatusInfo(root);
+            // ==================== 本地化配置（包裹区域，上边距 0） ====================
+            root.Add(CreateBox(null, BuildConfigContent));
 
             // 绑定 serializedObject
             root.Bind(serializedObject);
+
+            // 初始刷新
+            RefreshLanguageOptions();
 
             return root;
         }
 
         #endregion
 
-        #region UI 构建
+        #region 创建圆角描边盒子
 
-        private void BuildConfigReference(VisualElement root)
+        /// <summary>创建一个带黑色描边和圆角的盒子容器</summary>
+        private static VisualElement CreateBox(string title, System.Action<VisualElement> buildContent)
         {
-            var configsField = new PropertyField(serializedObject.FindProperty("configs"), "配置资产列表");
-            configsField.tooltip = "支持多个 LocalizationConfig 资产，自动合并所有 CSV 组和字体映射";
-            configsField.RegisterValueChangeCallback(evt =>
+            var box = new VisualElement
             {
-                serializedObject.ApplyModifiedProperties();
-                RefreshLanguageOptions();
-            });
-            root.Add(configsField);
+                style =
+                {
+                    backgroundColor = BoxBgColor,
+                    paddingLeft = 6,
+                    paddingRight = 6,
+                    paddingTop = 4,
+                    paddingBottom = 4,
+                    marginLeft = 0,
+                    marginRight = 0,
+                    marginTop = 2,
+                    marginBottom = 0,
+                    borderTopWidth = 1,
+                    borderBottomWidth = 1,
+                    borderLeftWidth = 1,
+                    borderRightWidth = 1,
+                    borderTopColor = Color.black,
+                    borderBottomColor = Color.black,
+                    borderLeftColor = Color.black,
+                    borderRightColor = Color.black,
+                    borderTopLeftRadius = 3,
+                    borderTopRightRadius = 3,
+                    borderBottomLeftRadius = 3,
+                    borderBottomRightRadius = 3,
+                    overflow = Overflow.Hidden,
+                }
+            };
+
+            if (!string.IsNullOrEmpty(title))
+            {
+                var header = new Label(title)
+                {
+                    style =
+                    {
+                        fontSize = 12,
+                        unityFontStyleAndWeight = FontStyle.Bold,
+                        color = Color.white,
+                        unityTextAlign = TextAnchor.MiddleLeft,
+                        marginLeft = 0,
+                        marginRight = 0,
+                        marginTop = 0,
+                        marginBottom = 4,
+                        paddingLeft = 0,
+                    }
+                };
+                box.Add(header);
+            }
+
+            buildContent?.Invoke(box);
+            return box;
         }
 
-        private void BuildLanguageSelector(VisualElement root)
+        #endregion
+
+        #region UI 构建
+
+        private void BuildLanguageContent(VisualElement container)
         {
-            // ===== 标题行（标题 + 当前语言提示 + 刷新按钮） =====
-            var headerRow = new VisualElement();
-            headerRow.style.flexDirection = FlexDirection.Row;
-            headerRow.style.alignItems = Align.Center;
-            headerRow.style.justifyContent = Justify.SpaceBetween;
-            headerRow.style.marginTop = 6;
-            headerRow.style.marginBottom = 2;
-            headerRow.style.marginLeft = 4;
-            headerRow.style.marginRight = 1;
-            root.Add(headerRow);
+            // ===== 第一行：下拉框 + 刷新按钮 =====
+            var topRow = new VisualElement
+            {
+                style =
+                {
+                    flexDirection = FlexDirection.Row,
+                    alignItems = Align.Center,
+                    marginBottom = 2,
+                }
+            };
+            container.Add(topRow);
 
-            var langHeader = new Label("语言切换");
-            langHeader.style.unityFontStyleAndWeight = FontStyle.Bold;
-            langHeader.style.unityTextAlign = TextAnchor.MiddleLeft;
-            headerRow.Add(langHeader);
-
-            var rightGroup = new VisualElement();
-            rightGroup.style.flexDirection = FlexDirection.Row;
-            rightGroup.style.alignItems = Align.Center;
-            headerRow.Add(rightGroup);
-
-            currentLangLabel = new Label("当前语言: --");
-            currentLangLabel.style.fontSize = 11;
-            currentLangLabel.style.marginRight = 6;
-            rightGroup.Add(currentLangLabel);
-
-            var refreshBtn = new Button(RefreshLanguageOptions);
-            refreshBtn.text = "";
-            refreshBtn.style.justifyContent = Justify.Center;
-            refreshBtn.style.alignItems = Align.Center;
-            var refreshIcon = new Image();
-            refreshIcon.image = EditorGUIUtility.IconContent("d_RotateTool").image;
-            refreshIcon.style.width = 15;
-            refreshIcon.style.height = 15;
-            refreshBtn.Add(refreshIcon);
-            refreshBtn.style.width = 20;
-            refreshBtn.style.height = 20;
-            refreshBtn.style.marginRight = 0;
-            rightGroup.Add(refreshBtn);
-
-            // ===== 下拉框行（右对齐） =====
-            var popupRow = new VisualElement();
-            popupRow.style.flexDirection = FlexDirection.RowReverse;
-            root.Add(popupRow);
-
+            // 下拉框
             languagePopup = new PopupField<string>("语言", languageOptions, 0);
             languagePopup.SetEnabled(false);
             languagePopup.style.flexGrow = 1;
+            languagePopup.style.marginRight = 20;
             languagePopup.RegisterValueChangedCallback(evt =>
             {
                 if (manager != null && Application.isPlaying && !string.IsNullOrEmpty(evt.newValue))
@@ -144,27 +181,99 @@ namespace FFramework.Utility
                     UpdateStatus();
                 }
             });
-            popupRow.Add(languagePopup);
+            topRow.Add(languagePopup);
 
-            // 初始刷新
-            RefreshLanguageOptions();
+            // 刷新按钮
+            var refreshBtn = new Button(RefreshLanguageOptions)
+            {
+                text = "",
+                style =
+                {
+                    justifyContent = Justify.Center,
+                    alignItems = Align.Center,
+                    width = 20,
+                    height = 20,
+                    left = -20,
+                    flexShrink = 0,
+                    paddingLeft = 0,
+                    paddingRight = 0,
+                    paddingTop = 0,
+                    paddingBottom = 0,
+                }
+            };
+            var refreshIcon = new Image
+            {
+                image = EditorGUIUtility.IconContent("d_RotateTool").image,
+                style =
+                {
+                    width = 14,
+                    height = 14,
+                }
+            };
+            refreshBtn.Add(refreshIcon);
+            topRow.Add(refreshBtn);
+
+            // ===== 第二行：状态信息 =====
+            var statusRow = new VisualElement
+            {
+                style =
+                {
+                    flexDirection = FlexDirection.Row,
+                    alignItems = Align.Center,
+                    marginTop = 2,
+                    marginLeft = 2,
+                }
+            };
+            container.Add(statusRow);
+
+            statusLabel = new Label("(运行后显示详细状态)")
+            {
+                style =
+                {
+                    fontSize = 11,
+                    color = Color.white,
+                    whiteSpace = WhiteSpace.Normal,
+                    flexGrow = 1,
+                }
+            };
+            statusRow.Add(statusLabel);
         }
 
-        private void BuildStatusInfo(VisualElement root)
+        private void BuildConfigContent(VisualElement container)
         {
-            var statusHeader = new Label("状态信息");
-            statusHeader.style.unityFontStyleAndWeight = FontStyle.Bold;
-            statusHeader.style.unityTextAlign = TextAnchor.MiddleLeft;
-            statusHeader.style.marginTop = 6;
-            statusHeader.style.marginLeft = 4;
-            statusHeader.style.marginBottom = 2;
-            root.Add(statusHeader);
+            var configsField = new PropertyField(serializedObject.FindProperty("configs"), "配置资产列表")
+            {
+                tooltip = "支持多个 LocalizationConfig 资产，自动合并所有 CSV 组和字体映射",
+                style =
+                {
+                    flexGrow = 1,
+                    marginLeft = 0,
+                    marginRight = 0,
+                    marginTop = 0,
+                }
+            };
 
-            statusLabel = new Label("(运行后显示详细状态)");
-            statusLabel.style.fontSize = 11;
-            statusLabel.style.marginLeft = 4;
-            statusLabel.style.whiteSpace = WhiteSpace.Normal;
-            root.Add(statusLabel);
+            // 挂载后设置内部样式
+            configsField.RegisterCallback<AttachToPanelEvent>(_ =>
+            {
+                // 折叠标题上边距置 0
+                var foldout = configsField.Q<Foldout>();
+                if (foldout != null)
+                    foldout.style.marginTop = 0;
+
+                // 列表区域左边距
+                var listView = configsField.Q<ListView>();
+                if (listView != null)
+                    listView.style.marginLeft = 16;
+            });
+
+            configsField.RegisterValueChangeCallback(evt =>
+            {
+                serializedObject.ApplyModifiedProperties();
+                RefreshLanguageOptions();
+            });
+            configsField.Bind(serializedObject);
+            container.Add(configsField);
         }
 
         #endregion
@@ -206,7 +315,7 @@ namespace FFramework.Utility
 
         private void UpdateStatus()
         {
-            if (statusLabel == null || currentLangLabel == null)
+            if (statusLabel == null)
                 return;
 
             if (manager == null)
@@ -217,9 +326,6 @@ namespace FFramework.Utility
 
             if (Application.isPlaying && manager.DataSet != null)
             {
-                string current = manager.CurrentLanguage ?? "无";
-                currentLangLabel.text = $"当前语言: {current}";
-
                 var languages = manager.GetSupportedLanguages();
                 var keys = manager.GetAllKeys();
                 int fontCount = 0;
@@ -237,7 +343,6 @@ namespace FFramework.Utility
             }
             else
             {
-                currentLangLabel.text = "当前语言: -- (运行后显示)";
                 statusLabel.text = "(运行后显示详细状态)";
             }
         }

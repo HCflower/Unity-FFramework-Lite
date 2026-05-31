@@ -53,6 +53,7 @@ namespace FFramework.Utility
         public EventReference fmodEvent;
 
         /// <summary>启用 3D 空间音频（关闭则为 2D 全局音频）</summary>
+        [Tooltip("只能3D->2D,不能2D->3D")]
         public bool is3D = true;
 
         [Range(0f, 1f)]
